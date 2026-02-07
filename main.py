@@ -6,6 +6,10 @@ Runs the complete board game image processing pipeline in sequence:
 2. Detect matrices on cleaned images
 3. Detect cells and visualize piece presence
    - Also generates composite images by matrix type
+4. Analyze and compare
+   - Extract game states from cell detection
+   - Compare cells with reference image (board0)
+   - Visualize histogram similarity heatmaps
 
 Usage:
     python main.py
@@ -101,16 +105,35 @@ def run_pipeline(source_dir=SOURCE_DIR, output_dir=OUTPUT_DIR):
     
     print("\n✓ Step 3 completed successfully")
     
+    # Step 4: Analyze and compare (merged analysis pipeline)
+    print("\n" + "="*80)
+    print("STEP 4: ANALYZING AND COMPARING BOARDS")
+    print("="*80)
+    
+    result = subprocess.run(
+        [sys.executable, "modules/analyze_and_compare.py", "--cleaned", CLEANED_DIR, "--output", output_dir],
+        cwd=Path.cwd()
+    )
+    
+    if result.returncode != 0:
+        print("\n✗ Step 4 failed: analyze_and_compare.py")
+        return False
+    
+    print("\n✓ Step 4 completed successfully")
+    
     # Pipeline complete
     print("\n" + "="*80)
     print("PIPELINE COMPLETE")
     print("="*80)
     print("✓ All processing steps completed successfully")
     print(f"\nOutput structure:")
-    print(f"  {output_dir}/cleaned/          - Cleaned and normalized board images")
-    print(f"  {output_dir}/matrices/         - Detected matrix regions")
-    print(f"  {output_dir}/cell_detection/   - Cell detection visualizations")
-    print(f"  {output_dir}/composites/       - Composite images by matrix type")
+    print(f"  {output_dir}/cleaned/             - Cleaned and normalized board images")
+    print(f"  {output_dir}/matrices/            - Detected matrix regions")
+    print(f"  {output_dir}/cell_detection/      - Cell detection visualizations")
+    print(f"  {output_dir}/composites/          - Composite images by matrix type")
+    print(f"  {output_dir}/states/              - Game state JSON files")
+    print(f"  {output_dir}/cell_comparisons/    - Side-by-side cell comparison composites")
+    print(f"  {output_dir}/comparison_reports/  - Histogram similarity heatmap visualizations")
     
     return True
 
@@ -141,11 +164,18 @@ def main():
             print("  2. Detect matrices - Locate 4 matrices on each board")
             print("  3. Detect cells - Visualize cell boundaries and piece detection")
             print("     (generates composite images by matrix type)")
+            print("  4. Analyze and compare - Game state extraction and board comparison")
+            print("     - Extract game states from cell detection")
+            print("     - Compare with reference board (board0)")
+            print("     - Generate histogram similarity heatmaps")
             print("\nOutput:")
-            print("  cleaned/          - Cleaned board images without margins")
-            print("  matrices/         - Matrix regions visualization and crops")
-            print("  cell_detection/   - Cell detection visualizations with piece markers")
-            print("  composites/       - Composite images grouping matrices by type")
+            print("  cleaned/              - Cleaned board images without margins")
+            print("  matrices/             - Matrix regions visualization and crops")
+            print("  cell_detection/       - Cell detection visualizations with piece markers")
+            print("  composites/           - Composite images grouping matrices by type")
+            print("  states/               - Game state JSON files")
+            print("  cell_comparisons/     - Side-by-side cell comparison composites")
+            print("  comparison_reports/   - Histogram similarity heatmap visualizations")
             sys.exit(0)
     
     try:

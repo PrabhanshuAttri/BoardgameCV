@@ -26,7 +26,7 @@ import numpy as np
 import json
 from typing import List, Tuple, Dict
 import math
-from config import MATRICES_DIR, CELL_DETECTION_DIR, COMPOSITES_DIR, LAYOUT_FILE, PIECE_DARKNESS_THRESHOLD, GRID_CELL_TOLERANCE
+from config import MATRICES_DIR, CELL_DETECTION_DIR, COMPOSITES_DIR, LAYOUT_FILE, PIECE_DARKNESS_THRESHOLD, GRID_CELL_TOLERANCE, REFERENCE_IMAGE
 
 
 class CellDetector:
@@ -57,6 +57,10 @@ class CellDetector:
         # Load layout
         self.layout = self._load_layout()
         
+        # Load reference image for cell comparison
+        self.reference_image = self._load_reference_image()
+        self.reference_cells = {}  # Will store extracted reference cells by matrix_id
+        
         # Matrix configurations (from layout)
         self.matrix_configs = {}
         for matrix_id in ["matrix_1", "matrix_2", "matrix_3", "matrix_4"]:
@@ -70,10 +74,16 @@ class CellDetector:
                 "v_margin": matrix_layout.get("vertical_margin_pixels", 0)
             }
         
+        # Extract reference cells if reference image available
+        if self.reference_image is not None:
+            self._extract_reference_cells()
+        
         self.stats = {
             'processed_matrices': 0,
             'total_cells_detected': 0,
             'total_pieces_detected': 0,
+            'total_cells_compared': 0,
+            'comparison_differences': [],
             'failed': 0,
             'errors': []
         }
@@ -87,6 +97,103 @@ class CellDetector:
         except Exception as e:
             print(f"⚠ Warning: Could not load layout file ({e}), using defaults")
             return {}
+    
+    def _load_reference_image(self) -> np.ndarray:
+        """Load reference image for cell comparison"""
+        try:
+            # Try to find board0.png in input directory (from matrices extraction)
+            ref_candidates = [
+                self.input_dir / "board0.png",
+                Path("training_output/cleaned/board0.png"),
+                Path(f"training_output/cleaned/{REFERENCE_IMAGE}"),
+            ]
+            
+            for ref_path in ref_candidates:
+                if ref_path.exists():
+                    image = cv2.imread(str(ref_path))
+                    if image is not None:
+                        print(f"✓ Loaded reference image: {ref_path.name}")
+                        return image
+            
+            # If not found, try to extract from matrix directory
+            ref_matrix_1 = self.input_dir / "board0_matrix_1.jpg"
+            if ref_matrix_1.exists():
+                print(f"⚠ Warning: Using board0 matrices for reference (full image not available)")
+                return None
+            
+            print("⚠ Warning: Reference image not found, cell comparison disabled")
+            return None
+        
+        except Exception as e:
+            print(f"⚠ Warning: Could not load reference image ({e})")
+            return None
+    
+    def _extract_reference_cells(self):
+        """Extract cells from reference image for each matrix"""
+        if self.reference_image is None:
+            return
+        
+        try:
+            for matrix_id in ["matrix_1", "matrix_2", "matrix_3", "matrix_4"]:
+                config = self.matrix_configs[matrix_id]
+                
+                # Extract matrix region from reference image
+                x1, y1, x2, y2 = self.layout[matrix_id]["pixel_coordinates"]
+                matrix_region = self.reference_image[y1:y2, x1:x2]
+                
+                # Extract individual cells from this matrix
+                cells = self._extract_cells_from_matrix_region(
+                    matrix_region,
+                    config["rows"],
+                    config["cols"],
+                    config["h_margin"],
+                    config["v_margin"],
+                    matrix_id
+                )
+                
+                self.reference_cells[matrix_id] = cells
+        
+        except Exception as e:
+            print(f"⚠ Warning: Could not extract reference cells ({e})")
+    
+    def _extract_cells_from_matrix_region(self, matrix_region: np.ndarray, 
+                                         rows: int, cols: int, 
+                                         h_margin: int, v_margin: int,
+                                         matrix_id: str = "") -> List[np.ndarray]:
+        """Extract individual cells from a matrix region"""
+        cells = []
+        mat_h, mat_w = matrix_region.shape[:2]
+        
+        is_triangular = matrix_id == "matrix_2"
+        
+        # Calculate cell dimensions
+        cell_width = (mat_w - h_margin * max(0, cols - 1)) / cols if cols > 0 else mat_w
+        cell_height = (mat_h - v_margin * max(0, rows - 1)) / rows if rows > 0 else mat_h
+        
+        for row in range(rows):
+            for col in range(cols):
+                # Skip missing cells in triangular matrix (right-aligned)
+                if is_triangular and col < (cols - 1 - row):
+                    cells.append(None)
+                    continue
+                
+                # Calculate cell bounds
+                x_start = int(col * (cell_width + h_margin))
+                y_start = int(row * (cell_height + v_margin))
+                x_end = int(x_start + cell_width)
+                y_end = int(y_start + cell_height)
+                
+                # Ensure bounds are within region
+                x_start = max(0, min(x_start, mat_w - 1))
+                y_start = max(0, min(y_start, mat_h - 1))
+                x_end = max(x_start + 1, min(x_end, mat_w))
+                y_end = max(y_start + 1, min(y_end, mat_h))
+                
+                # Extract cell
+                cell = matrix_region[y_start:y_end, x_start:x_end]
+                cells.append(cell if cell.size > 0 else None)
+        
+        return cells
     
     def get_matrix_images(self) -> List[Path]:
         """Get all matrix_*.jpg files from input directory"""
@@ -360,6 +467,94 @@ class CellDetector:
         
         return cells
     
+    def compare_cell_with_reference(self, board_cell: np.ndarray, 
+                                   ref_cell: np.ndarray) -> Dict:
+        """
+        Compare a board cell with reference cell using multiple OpenCV methods.
+        
+        Args:
+            board_cell: Cell image from board
+            ref_cell: Cell image from reference
+            
+        Returns:
+            Dictionary with similarity metrics
+        """
+        if board_cell.size == 0 or ref_cell.size == 0:
+            return {"structural_similarity": 0.0, "histogram_similarity": 0.0}
+        
+        try:
+            # Resize to same size for comparison
+            h, w = ref_cell.shape[:2]
+            if board_cell.shape != ref_cell.shape:
+                board_cell_resized = cv2.resize(board_cell, (w, h))
+            else:
+                board_cell_resized = board_cell
+            
+            # Method 1: Structural Similarity (SSIM) - using mean squared error as approximation
+            mse = np.mean((board_cell_resized.astype(float) - ref_cell.astype(float)) ** 2)
+            ssim = 1.0 / (1.0 + mse / 1000.0)  # Normalize MSE to similarity score
+            
+            # Method 2: Histogram Comparison
+            hist_ref = cv2.calcHist([ref_cell], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
+            hist_board = cv2.calcHist([board_cell_resized], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
+            
+            hist_sim = cv2.compareHist(hist_ref, hist_board, cv2.HISTCMP_CORREL)
+            
+            return {
+                "structural_similarity": float(ssim),
+                "histogram_similarity": float(hist_sim)
+            }
+        
+        except Exception as e:
+            return {"structural_similarity": 0.0, "histogram_similarity": 0.0}
+    
+    def _compare_cells_with_reference(self, board_name: str, matrix_type: str, 
+                                     image: np.ndarray, cells: List[Tuple]) -> None:
+        """
+        Compare detected cells with reference cells using OpenCV methods.
+        
+        Args:
+            board_name: Name of the board being processed
+            matrix_type: Matrix identifier (matrix_1, etc.)
+            image: Matrix image
+            cells: Detected cells
+        """
+        if matrix_type not in self.reference_cells:
+            return
+        
+        ref_cells = self.reference_cells[matrix_type]
+        config = self.matrix_configs[matrix_type]
+        
+        # Extract cell regions from current image for comparison
+        current_cells = self._extract_cells_from_matrix_region(
+            image, config["rows"], config["cols"], 
+            config["h_margin"], config["v_margin"], matrix_type
+        )
+        
+        # Compare each cell
+        differences = []
+        for cell_idx, (ref_cell, curr_cell) in enumerate(zip(ref_cells, current_cells)):
+            if ref_cell is None or curr_cell is None:
+                continue
+            
+            similarity = self.compare_cell_with_reference(curr_cell, ref_cell)
+            
+            # Record cells with low similarity
+            if similarity["histogram_similarity"] < 0.7:
+                differences.append({
+                    "board": board_name,
+                    "matrix": matrix_type,
+                    "cell_idx": cell_idx,
+                    "histogram_similarity": similarity["histogram_similarity"],
+                    "structural_similarity": similarity["structural_similarity"]
+                })
+            
+            self.stats['total_cells_compared'] += 1
+        
+        # Store differences for statistics
+        if differences:
+            self.stats['comparison_differences'].extend(differences)
+    
     def create_visualization(self, image: np.ndarray, cells: List[Tuple[int, int, int, int, bool]],
                            matrix_name: str) -> np.ndarray:
         """
@@ -464,6 +659,13 @@ class CellDetector:
             self.stats['errors'].append(f"{image_path.name}: {str(e)}")
             self.stats['failed'] += 1
             return False
+        
+        # Compare cells with reference if available
+        if self.reference_image is not None and matrix_type in self.reference_cells:
+            try:
+                self._compare_cells_with_reference(board_name, matrix_type, image, cells)
+            except Exception as e:
+                print(f"⚠ Warning: Cell comparison failed ({e})")
         
         # Create visualization
         try:
@@ -630,6 +832,11 @@ class CellDetector:
         print(f"Processed matrices: {self.stats['processed_matrices']}/{len(matrix_images)}")
         print(f"Total cells detected: {self.stats['total_cells_detected']}")
         print(f"Total pieces detected: {self.stats['total_pieces_detected']}")
+        print(f"Total cells compared with reference: {self.stats['total_cells_compared']}")
+        
+        if self.stats['comparison_differences']:
+            print(f"Cells with low similarity to reference: {len(self.stats['comparison_differences'])}")
+        
         print(f"Failed: {self.stats['failed']}")
         
         if self.stats['errors']:

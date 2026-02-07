@@ -29,7 +29,8 @@
     },
     "matrix_2": {
       "name": "Triangular Staircase Staging area",
-      "location": "left side, middle area",
+      "location": "left side, middle area, right aligned",
+      "description": "Right-aligned triangular staircase: row 0 has 1 cell (rightmost), row 1 has 2 cells, etc.",
       "rows": 5,
       "cols": 5,
       "pixel_coordinates": [
