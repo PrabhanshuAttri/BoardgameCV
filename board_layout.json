@@ -1,0 +1,97 @@
+{
+  "board_layout": {
+    "description": "Matrix regions - measured on a reference image. Supply pixel coordinates and max dimensions.",
+    "max_width": 1500,
+    "max_height": 1500,
+    "format": "pixels",
+    "note": "Percentages are calculated as: x_pct = x_pixel / max_width, y_pct = y_pixel / max_height",
+    "matrix_1": {
+      "name": "Positioning Area",
+      "location": "Full width, top area",
+      "rows": 5,
+      "cols": 20,
+      "pixel_coordinates": [
+        83,
+        101,
+        1419,
+        493
+      ],
+      "percentage_coordinates": [
+        0.0433,
+        0.0593,
+        0.956,
+        0.334
+      ],
+      "horizontal_margin_pixels": 7,
+      "vertical_margin_pixels": 20,
+      "horizontal_margin_percentage": 0.001,
+      "vertical_margin_percentage": 0.001
+    },
+    "matrix_2": {
+      "name": "Triangular Staircase Staging area",
+      "location": "left side, middle area",
+      "rows": 5,
+      "cols": 5,
+      "pixel_coordinates": [
+        75,
+        538,
+        711,
+        1181
+      ],
+      "percentage_coordinates": [
+        0.042,
+        0.348,
+        0.492,
+        0.8
+      ],
+      "horizontal_margin_pixels": 2,
+      "vertical_margin_pixels": 2,
+      "horizontal_margin_percentage": 0.001,
+      "vertical_margin_percentage": 0.001
+    },
+    "matrix_3": {
+      "name": "Piece State Final Area",
+      "location": "right side, middle area",
+      "rows": 5,
+      "cols": 5,
+      "pixel_coordinates": [
+        788,
+        541,
+        1418,
+        1175
+      ],
+      "percentage_coordinates": [
+        0.5133,
+        0.3493,
+        0.9773,
+        0.8
+      ],
+      "horizontal_margin_pixels": 14,
+      "vertical_margin_pixels": 17,
+      "horizontal_margin_percentage": 0.001,
+      "vertical_margin_percentage": 0.001
+    },
+    "matrix_4": {
+      "name": "Negative Scoring Area",
+      "location": "left side, bottom",
+      "rows": 1,
+      "cols": 7,
+      "pixel_coordinates": [
+        65,
+        1269,
+        1045,
+        1417
+      ],
+      "percentage_coordinates": [
+        0.0333,
+        0.818,
+        0.7073,
+        0.9513
+      ],
+      "horizontal_margin_pixels": 22,
+      "vertical_margin_pixels": 0,
+      "horizontal_margin_percentage": 0.001,
+      "vertical_margin_percentage": 0
+    }
+  }
+}
